@@ -426,9 +426,13 @@ h1{ margin:0; font-size: 24px; letter-spacing:.2px; }
 }
 .thumbListHead h3{ margin:0; font-size: 14px; }
 .thumbListBody{
-  display:grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  column-count: 4;
+  column-gap: 10px;
+}
+
+.photoItem{
+  break-inside: avoid;
+  margin-bottom: 10px;
 }
 .emptyList{
   grid-column: 1 / -1;
@@ -450,9 +454,9 @@ h1{ margin:0; font-size: 24px; letter-spacing:.2px; }
 .photoItem:hover{ transform: translateY(-1px); border-color: rgba(37,99,235,.35); }
 .photoItem img{
   width:100%;
-  height: 92px;
-  object-fit: cover;
+  height:auto;
   display:block;
+  object-fit: contain; /* optional */
 }
 .photoMeta{
   padding: 8px 8px;
