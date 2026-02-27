@@ -27,6 +27,13 @@ const quality = document.getElementById("quality");
 const qualityVal = document.getElementById("qualityVal");
 
 const outHeightInput = document.getElementById("outHeight");
+const outHeightMode = document.getElementById("outHeightMode");
+const customHeightRow = document.getElementById("customHeightRow");
+
+const outWidthMode = document.getElementById("outWidthMode");
+const outWidthCustom = document.getElementById("outWidthCustom");
+const customWidthRow = document.getElementById("customWidthRow");
+
 const blurFillToggle = document.getElementById("blurFillToggle");
 
 const photoListEl = document.getElementById("photoList");
@@ -82,10 +89,76 @@ const wmGradient = document.getElementById("wmGradient");
 const wmGradType = document.getElementById("wmGradType");
 const wmGradA = document.getElementById("wmGradA");
 const wmGradB = document.getElementById("wmGradB");
+// ==========================
+// Output sizing (Width/Height)
+// ==========================
+const DEFAULT_OUT_W = 1080;
+const DEFAULT_OUT_H = 1080;
+// prevent accidentally exporting massive images
+const MAX_AUTO_LONG_SIDE = 2000;
+const MIN_CUSTOM_SIZE = 200;
+const MAX_CUSTOM_SIZE = 6000;
+
+const outWidthModeEl   = document.getElementById("outWidthMode");
+const outWidthCustomEl = document.getElementById("outWidthCustom");
+const outHeightModeEl  = document.getElementById("outHeightMode");
+
+[outWidthModeEl, outWidthCustomEl, outHeightModeEl, outHeightInput, blurFillToggle, formatSelect, quality]
+  .forEach(el => {
+    el?.addEventListener("input", onOutputSettingsChanged);
+    el?.addEventListener("change", onOutputSettingsChanged);
+  });
 
 
 
-const OUT_W = 1080;
+
+
+
+function clamp(n, a, b){
+  return Math.max(a, Math.min(b, n));
+}
+
+function getOutputWidth(photoImg){
+  const mode = outWidthMode?.value || "fixed";
+  const customVal = parseInt(outWidthCustom?.value || String(DEFAULT_OUT_W), 10);
+
+  if (mode === "custom"){
+    return clamp(isNaN(customVal) ? DEFAULT_OUT_W : customVal, MIN_CUSTOM_SIZE, MAX_CUSTOM_SIZE);
+  }
+
+  if (mode === "auto" && photoImg){
+    // If height is also auto, we will override both sizes via getAutoBothSize().
+    return Math.min(photoImg.width, MAX_AUTO_LONG_SIDE);
+  }
+
+  return DEFAULT_OUT_W;
+}
+
+function getOutputHeight(photoImg){
+  const mode = outHeightMode?.value || "custom";
+  const customVal = parseInt(outHeightInput?.value || String(DEFAULT_OUT_H), 10);
+
+  if (mode === "custom"){
+    return clamp(isNaN(customVal) ? DEFAULT_OUT_H : customVal, MIN_CUSTOM_SIZE, MAX_CUSTOM_SIZE);
+  }
+
+  if (mode === "auto" && photoImg){
+    // If width is also auto, we will override both sizes via getAutoBothSize().
+    return Math.min(photoImg.height, MAX_AUTO_LONG_SIDE);
+  }
+
+  return DEFAULT_OUT_H;
+}
+
+function getAutoBothSize(photoImg){
+  if (!photoImg) return { w: DEFAULT_OUT_W, h: DEFAULT_OUT_H };
+  const longSide = Math.max(photoImg.width, photoImg.height);
+  const scale = Math.min(1, MAX_AUTO_LONG_SIDE / Math.max(1, longSide));
+  return {
+    w: Math.max(1, Math.round(photoImg.width * scale)),
+    h: Math.max(1, Math.round(photoImg.height * scale)),
+  };
+}
 
 const DEFAULT_HEADER_FILE = "header001.png";
 const DEFAULT_FOOTER_FILE = "footer001.png";
@@ -113,6 +186,41 @@ function setProgress(pct){ barEl.style.width = `${pct}%`; }
 quality?.addEventListener("input", () => {
   qualityVal.textContent = quality.value;
 });
+
+
+function onOutputSettingsChanged(){
+  if (!photoItems.length) return;
+
+  // recompute baseScale for ALL photos based on latest output dims
+  for (const it of photoItems){
+    if (!it?.img) continue;
+
+    const saved = edits.get(it.id);
+    if (!saved) continue;
+
+    // recompute baseScale using latest output settings
+    const freshBase = getDefaultEdit(it.img).baseScale;
+
+    // keep user zoom/offset/rotate/light, just update baseScale
+    edits.set(it.id, { ...saved, baseScale: freshBase, _photoId: it.id });
+  }
+
+  // if modal open + editing current photo, update draft baseScale too
+  if (editModal?.classList.contains("show") && draftEdit && draftPhotoId){
+    const cur = photoItems[currentIndex];
+    if (cur?.img && cur.id === draftPhotoId){
+      draftEdit.baseScale = getDefaultEdit(cur.img).baseScale;
+    }
+    redrawEditor();
+  }
+
+  refreshPreview();
+}
+
+
+
+
+
 
 function makeFileId(file){
   return `${file.name}__${file.size}__${file.lastModified}`;
@@ -215,6 +323,22 @@ function syncWmUIFromState(){
   wmGradA && (wmGradA.value = wmState.gradA || "#ffffff");
   wmGradB && (wmGradB.value = wmState.gradB || "#7c3aed");
 }
+
+function updatePrevNextUI(){
+  if (!prevBtn || !nextBtn) return;
+  const total = photoItems.length;
+
+  const hasPrev = total > 0 && currentIndex > 0;
+  const hasNext = total > 0 && currentIndex < total - 1;
+
+  prevBtn.style.display = hasPrev ? "inline-flex" : "none";
+  nextBtn.style.display = hasNext ? "inline-flex" : "none";
+}
+
+
+
+
+
 
 function syncWmStateFromUI(){
   if (wmEnable) wmState.enabled = !!wmEnable.checked;
@@ -434,13 +558,43 @@ function drawTextWatermark(ctx, W, H, wm) {
 
 
 
+const refreshPreviewBtn = document.getElementById("refreshPreviewBtn");
+refreshPreviewBtn?.addEventListener("click", () => {
+  refreshPreview();
+  setStatus("Preview refreshed.");
+});
 
 
 
 
 
+const refitBtn = document.getElementById("refitBtn");
 
+refitBtn?.addEventListener("click", () => {
+  if (!photoItems.length) return;
 
+  // refit gambar current
+  const idx = currentIndex >= 0 ? currentIndex : 0;
+  const it = photoItems[idx];
+  if (!it?.img) return;
+
+  const fresh = getDefaultEdit(it.img);
+  fresh._photoId = it.id;
+  fresh._saved = false;     // optional
+  edits.set(it.id, fresh);
+
+  // kalau tengah edit dalam modal pun reset draft
+  if (draftPhotoId === it.id) {
+    draftEdit = { ...fresh };
+    zoomRange.value = String(draftEdit.zoom || 1);
+    zoomVal.textContent = `${Number(zoomRange.value).toFixed(2)}x`;
+    rotVal.textContent = `${draftEdit.rotDeg || 0}°`;
+  }
+
+  refreshPreview();
+  redrawEditor?.();
+  setStatus("Re-Fit applied (no crop).");
+});
 
 
 
@@ -628,7 +782,32 @@ photosInput?.addEventListener("change", async () => {
   await loadPhotos(files);
 });
 
-outHeightInput?.addEventListener("input", () => refreshPreview());
+function syncSizeUI(){
+  if (customWidthRow && outWidthMode) {
+    customWidthRow.style.display = (outWidthMode.value === "custom") ? "grid" : "none";
+  }
+  if (customHeightRow && outHeightMode) {
+    customHeightRow.style.display = (outHeightMode.value === "custom") ? "grid" : "none";
+  }
+}
+
+outWidthMode?.addEventListener("change", () => {
+  syncSizeUI();
+  refreshPreview();
+});
+
+outWidthCustom?.addEventListener("input", () => {
+  if (outWidthMode?.value === "custom") refreshPreview();
+});
+
+outHeightMode?.addEventListener("change", () => {
+  syncSizeUI();
+  refreshPreview();
+});
+
+outHeightInput?.addEventListener("input", () => {
+  if (!outHeightMode || outHeightMode.value === "custom") refreshPreview();
+});
 blurFillToggle?.addEventListener("change", () => refreshPreview());
 formatSelect?.addEventListener("change", () => refreshPreview());
 
@@ -788,26 +967,56 @@ function autoAdjustForImage(img){
 // ==========================
 // Drawing (FINAL OUTPUT / PREVIEW)
 // ==========================
-function getOverlayHeights(){
+function getOverlayHeights(outW){
   let headerH = 0, footerH = 0;
-  if (headerImg) headerH = Math.round(headerImg.height * (OUT_W / headerImg.width));
-  if (footerImg) footerH = Math.round(footerImg.height * (OUT_W / footerImg.width));
+  if (headerImg) headerH = Math.round(headerImg.height * (outW / headerImg.width));
+  if (footerImg) footerH = Math.round(footerImg.height * (outW / footerImg.width));
   return { headerH, footerH };
 }
 
-function getCanvasDimsForOutput(){
-  const OUT_H = parseInt(outHeightInput?.value || "1080", 10) || 1080;
-  const { headerH, footerH } = getOverlayHeights();
+function getCanvasDimsForOutput(photoImg){
+  const wMode = document.getElementById("outWidthMode")?.value || "fixed";
+  const hMode = document.getElementById("outHeightMode")?.value || "custom";
 
+  // ===== CASE 1: BOTH AUTO  => canvas ikut gambar (no gap, no crop) =====
+  if (wMode === "auto" && hMode === "auto" && photoImg){
+    const MAX_LONG = 2000; // boleh ubah
+    const scale = Math.min(1, MAX_LONG / Math.max(photoImg.width, photoImg.height));
+
+    const OUT_W = Math.round(photoImg.width * scale);
+    const photoAreaH = Math.round(photoImg.height * scale);
+
+    const { headerH, footerH } = getOverlayHeights(OUT_W);
+    const canvasH = headerH + photoAreaH + footerH;
+
+    return { canvasH, headerH, footerH, photoAreaH, OUT_W };
+  }
+
+  // ===== CASE 2: Normal modes (fixed/custom/one-auto) =====
+  const OUT_W = getOutputWidth(photoImg);
+  const { headerH, footerH } = getOverlayHeights(OUT_W);
+
+  // Height AUTO (single auto) = photo area ikut ratio OUT_W
+  if (hMode === "auto" && photoImg){
+    const scale = OUT_W / photoImg.width;
+    let photoAreaH = Math.round(photoImg.height * scale);
+    photoAreaH = Math.min(photoAreaH, 2000);
+
+    const canvasH = headerH + photoAreaH + footerH;
+    return { canvasH, headerH, footerH, photoAreaH, OUT_W };
+  }
+
+  // Height fixed/custom = total canvas height
+  const OUT_H = getOutputHeight(photoImg);
   let canvasH = OUT_H;
-  let photoAreaH = canvasH - headerH - footerH;
 
+  let photoAreaH = canvasH - headerH - footerH;
   if (photoAreaH < 80) {
     photoAreaH = 80;
     canvasH = headerH + photoAreaH + footerH;
   }
 
-  return { canvasH, headerH, footerH, photoAreaH };
+  return { canvasH, headerH, footerH, photoAreaH, OUT_W };
 }
 
 function drawEditedPhotoIntoArea(ctx, img, areaX, areaY, areaW, areaH, edit){
@@ -860,9 +1069,15 @@ function drawEditedPhotoIntoArea(ctx, img, areaX, areaY, areaW, areaH, edit){
 
 function drawToCanvas(photoImg, mimeType, edit) {
   const fillWhite = (mimeType === "image/jpeg");
-  const useBlurFill = !!blurFillToggle?.checked;
+  const wMode = document.getElementById("outWidthMode")?.value || "fixed";
+const hMode = document.getElementById("outHeightMode")?.value || "custom";
 
-  const { canvasH, headerH, footerH, photoAreaH } = getCanvasDimsForOutput();
+// bila both auto, canvas dah ngam2 ikut gambar → blur tak perlu
+const useBlurFill = (wMode === "auto" && hMode === "auto")
+  ? false
+  : !!blurFillToggle?.checked;
+
+  const { canvasH, headerH, footerH, photoAreaH, OUT_W } = getCanvasDimsForOutput(photoImg);
 
   const canvas = document.createElement("canvas");
   canvas.width = OUT_W;
@@ -1071,7 +1286,7 @@ function renderPhotoList(){
 // Default edit (FIT / CONTAIN) + Light defaults
 // ==========================
 function getDefaultEdit(img){
-  const { photoAreaH } = getCanvasDimsForOutput();
+  const { photoAreaH, OUT_W } = getCanvasDimsForOutput(img);
   const areaW = OUT_W;
   const areaH = Math.max(80, photoAreaH);
 
@@ -1110,7 +1325,8 @@ function syncLightUI(){
 function openEditor(idx){
   if (!photoItems[idx]) return;
   currentIndex = idx;
-
+  updatePrevNextUI();
+  
   const it = photoItems[idx];
   const img = it.img;
   if (!img) return;
@@ -1188,7 +1404,7 @@ function redrawEditor(){
   ctx.clearRect(0,0,editCanvas.width,editCanvas.height);
   ctx.drawImage(canvas, 0, 0);
 
-  const { headerH, photoAreaH } = getCanvasDimsForOutput();
+  const { headerH, photoAreaH, OUT_W } = getCanvasDimsForOutput(it.img);
   ctx.save();
   ctx.strokeStyle = "rgba(37,99,235,.9)";
   ctx.lineWidth = 6;
@@ -1380,13 +1596,12 @@ saveBtn?.addEventListener("click", () => {
   refreshPreview();
 
   // ✅ Auto close modal lepas nampak feedback sekejap
-  setTimeout(() => {
-    saveBtn.textContent = originalText || "Save (Apply)";
-    saveBtn.classList.remove("saved");
-    saveBtn.disabled = false;
-
-    closeEditor();
-  }, 650);
+setTimeout(() => {
+  saveBtn.textContent = originalText || "Save (Apply)";
+  saveBtn.classList.remove("saved");
+  saveBtn.disabled = false;
+  // closeEditor(); ❌ buang
+}, 650);
 });
 prevBtn?.addEventListener("click", () => {
   if (photoItems.length === 0) return;
@@ -1462,7 +1677,7 @@ exportBtn?.addEventListener("click", async () => {
       const blob = await canvasToBlobSafe(canvas);
 
       const safeName = it.file.name.replace(/\.[^/.]+$/, "");
-      const outName = `${safeName}_1080x${canvas.height}.${ext}`;
+      const outName = `${safeName}_${canvas.width}x${canvas.height}.${ext}`;
 
       if (zipMode) {
         zip.file(outName, blob);
@@ -1481,7 +1696,7 @@ exportBtn?.addEventListener("click", async () => {
       setStatus("Generating ZIP...");
       await yieldUI();
       const zipBlob = await zip.generateAsync({ type: "blob" });
-      downloadBlob(zipBlob, `output_1080_${Date.now()}.zip`);
+      downloadBlob(zipBlob, `output_${Date.now()}.zip`);
     }
 
     setStatus("Siap ✅");
@@ -1540,6 +1755,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
   loadOverlayFromStorage("header");
   loadOverlayFromStorage("footer");
+
+  // Size UI init (show/hide custom inputs)
+  syncSizeUI();
 
   if (!localStorage.getItem("overlay_header")) {
     loadDefaultOverlay("header", DEFAULT_HEADER_FILE);
