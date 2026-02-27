@@ -102,18 +102,36 @@
           <p>Upload photo banyak → edit satu-satu → export semua.</p>
         </div>
 
-        <label class="drop big" id="photosDrop">
-          <input id="photosInput" type="file" accept="image/*" multiple hidden />
-          <div class="dropIcon">🖼️</div>
-          <div class="dropText">
-            <b>Drag & drop photos</b> atau klik untuk pilih banyak
-            <span>Support JPG/PNG/WEBP</span>
+     <div class="settings">
+          <!-- ===== Output Size Controls ===== -->
+          <div class="setRow">
+            <div class="setLabel">Output Width</div>
+            <select id="outWidthMode" class="select">
+              <option value="fixed" selected>1080px (Fixed)</option>
+              <option value="auto">Auto (Follow Image Width)</option>
+              <option value="custom">Custom</option>
+            </select>
+            <div class="qVal"></div>
           </div>
-        </label>
 
-        <div class="settings">
+          <div class="setRow" id="customWidthRow" style="display:none;">
+            <div class="setLabel">Custom Width</div>
+            <input id="outWidthCustom" type="number" value="1080" min="200" step="10" class="select" />
+            <div class="qVal">px</div>
+          </div>
+
           <div class="setRow">
             <div class="setLabel">Output Height</div>
+            <select id="outHeightMode" class="select">
+              <option value="fixed">1080px (Fixed)</option>
+              <option value="auto">Auto (Follow Image Height)</option>
+              <option value="custom" selected>Custom</option>
+            </select>
+            <div class="qVal"></div>
+          </div>
+
+          <div class="setRow" id="customHeightRow">
+            <div class="setLabel">Custom Height</div>
             <input id="outHeight" type="number" value="1080" min="200" step="10" class="select" />
             <div class="qVal">px</div>
           </div>
@@ -144,6 +162,17 @@
             <span class="toggleText">Download sebagai ZIP</span>
           </label>
         </div>
+<br>
+        <label class="drop big" id="photosDrop">
+          <input id="photosInput" type="file" accept="image/*" multiple hidden />
+          <div class="dropIcon">🖼️</div>
+          <div class="dropText">
+            <b>Drag & drop photos</b> atau klik untuk pilih banyak
+            <span>Support JPG/PNG/WEBP</span>
+          </div>
+        </label>
+
+   
 
         <!-- LIST PHOTOS (inside Photos panel like your sketch) -->
         <div class="thumbListCard">
@@ -334,9 +363,14 @@
  <!-- RIGHT: PREVIEW -->
 <div class="panel">
   <div class="panelHead">
+  <div>
     <h2>Preview</h2>
     <p>Ikut photo yang dipilih.</p>
   </div>
+
+  <button class="ghost" id="refreshPreviewBtn" type="button">🔄 Refresh</button>
+  <button class="ghost" id="refitBtn" type="button">🧲 Fit</button>
+</div>
 
   <!-- buang previewCard, pakai body terus -->
   <div class="previewBody">
